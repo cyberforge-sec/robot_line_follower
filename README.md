@@ -6,7 +6,7 @@ Arduino-based line follower using 6 TCRT5000 sensors and PID control for autonom
 Proyek ini adalah robot line follower berbasis Arduino Uno dan sensor TCRT5000, yang menggunakan algoritma PID untuk mengikuti garis berwarna hitam pada latar putih. Cocok untuk lomba robotik dasar dan edukasi.
 
 🖼️ Gambar Lintasan
-![alt text](?raw=true)
+![alt text](https://github.com/cyberforge-sec/robot_line_follower/blob/main/robot%20line%20follower/Gambar%20Lintasan.png?raw=true)
 
 🔧 Spesifikasi Hardware & Software
 Lihat detail lengkap pada file [spesifikasi.txt](spesifikasi.txt)
