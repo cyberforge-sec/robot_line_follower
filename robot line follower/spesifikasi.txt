@@ -1,0 +1,118 @@
+Spesifikasi Robot Line Follower
+Berikut adalah spesifikasi lengkap untuk robot line follower yang telah dirancang:
+Spesifikasi Hardware
+1. Mikrokontroler
+
+Model: Arduino Uno R3
+Processor: ATmega328P (16 MHz)
+Flash Memory: 32 KB
+SRAM: 2 KB
+EEPROM: 1 KB
+Pin Digital I/O: 14 pin (6 PWM)
+Pin Analog: 6 pin (A0-A5)
+Tegangan Operasi: 5V
+
+2. Sensor
+
+Tipe: TCRT5000 IR Reflective Sensor
+Jumlah: 6 sensor
+Koneksi: Analog (A0-A5)
+Jarak Deteksi Optimal: 1-10 mm
+Range Tegangan: 3.3V-5V
+Output: Analog (untuk deteksi gradasi)
+Konfigurasi: Linear array dengan jarak antar sensor ~10mm
+Sensitivitas: Dapat disesuaikan via trimpot (jika modul memilikinya)
+
+3. Driver Motor
+
+Model: L298N Dual H-Bridge Motor Driver
+Tegangan Operasi: 5-35V
+Arus Maksimal: 2A per channel
+Daya Maksimal: 25W
+Kemampuan: Kendali 2 motor DC secara independen
+Pin Kontrol: 4 pin logika (IN1, IN2, IN3, IN4)
+Pin PWM: 2 pin (ENA, ENB)
+Proteksi Dioda: Ya
+
+4. Motor DC
+
+Tipe: Gearbox DC Motor
+Jumlah: 2 (kiri dan kanan)
+Tegangan Operasi: 3-12V (disarankan 6-9V)
+Kecepatan tanpa beban: ~100-300 RPM (tergantung rasio gearbox)
+Torsi: Sedang (sesuai untuk robot compact)
+
+5. Sasis
+
+Material: Acrylic/ABS Plastic
+Dimensi Optimal: 15cm x 12cm
+Susunan Roda: Differential drive (2 roda penggerak)
+Roda: Diameter 65mm dengan grip (karet/silikon)
+Caster: 1 ball caster di bagian depan/belakang
+
+6. Power Supply
+
+Tipe: Baterai Li-Po/Li-Ion atau 4-6 baterai AA
+Tegangan: 7.4V-11.1V
+Kapasitas: Minimal 1000mAh
+Regulator: Step-down converter untuk Arduino (jika diperlukan)
+
+Spesifikasi Software
+1. Algoritma Dasar
+
+Tipe: PID (Proportional-Integral-Derivative)
+Sampling Rate: 10-20ms
+Parameter Default:
+
+Kp (Proportional): 25
+Ki (Integral): 0
+Kd (Derivative): 15
+
+
+
+2. Fitur Software
+
+Kalibrasi Otomatis: Penyesuaian threshold sensor
+Deteksi Posisi: Weighted average untuk penentuan posisi garis
+Mode Kecepatan: Variabel (baseSpeed dan maxSpeed)
+Kontrol Kecepatan: PWM dengan range 0-255
+Penanganan Kasus Khusus:
+
+Pencarian garis saat kehilangan jalur
+Deteksi persimpangan
+Kontrol gerakan pada belokan tajam
+
+
+
+3. Parameter Performa
+
+Kecepatan Dasar: 150 (dari 255)
+Kecepatan Belok: 120 (dari 255)
+Kecepatan Maksimum: 200 (dari 255)
+Responsivitas: <50ms untuk perubahan arah
+Kemampuan Belokan: Dapat mengikuti belokan hingga 90°
+Toleransi Lintasan: Lebar garis 15-25mm
+Kontras Lintasan: Hitam pada putih (reflektivitas tinggi)
+
+Spesifikasi Lintasan
+1. Karakteristik Garis
+
+Warna: Hitam (non-reflektif)
+Latar Belakang: Putih (reflektif)
+Lebar Garis: 15-25mm (optimal 18mm)
+Material: Vinil/kertas matt/papan kayu dicat
+
+2. Elemen Lintasan
+
+Jalur Lurus: Segmen minimal 30cm
+Belokan Halus: Radius 10-30cm
+Belokan Tajam: Sudut 90°
+Zigzag: Perubahan arah cepat (S-shape)
+Persimpangan: Bentuk T, Y, atau +
+Loop: Jalur melingkar tertutup
+
+3. Dimensi Lintasan
+
+Ukuran Total: Minimal 1m x 1m
+Jarak Antar Jalur: Minimal 25cm
+Panjang Total: 3-10m
