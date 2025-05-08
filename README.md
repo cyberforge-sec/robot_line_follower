@@ -32,7 +32,7 @@ Proyek ini adalah robot line follower berbasis Arduino Uno dan sensor TCRT5000, 
 ![alt text](https://github.com/cyberforge-sec/robot_line_follower/blob/main/robot%20line%20follower/Gambar%20Lintasan.png?raw=true)
 
 🔧 Spesifikasi Hardware & Software
-Lihat detail lengkap pada file [Lihat spesifikasi hardware & software](spesifikasi.txt)
+Lihat detail lengkap pada file [Lihat spesifikasi hardware & software](https://github.com/cyberforge-sec/robot_line_follower/blob/main/robot%20line%20follower/spesifikasi.txt)
 
 🧠 Fitur Utama
 - 6 sensor IR
