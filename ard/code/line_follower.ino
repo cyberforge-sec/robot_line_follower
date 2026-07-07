@@ -63,7 +63,7 @@ int sensorThreshold[NUM_SENSORS] = {500, 500, 500, 500, 500, 500};
 
 // --- Sensor Readings ---
 int sensorAnalog[NUM_SENSORS];   // Normalized analog values (0-1000)
-bool sensorBinary[NUM_SENSORS];  // true = white (line absent), false = black (line detected)
+bool lineOnSensor[NUM_SENSORS];  // true = white (line absent), false = black (line detected)
 
 // --- PID State ---
 float pidError = 0.0;
@@ -110,8 +110,8 @@ void loop() {
   bool allWhite = true;
   bool allBlack = true;
   for (int i = 0; i < NUM_SENSORS; i++) {
-    if (sensorBinary[i] == false) allWhite = false;  // at least one sees black
-    if (sensorBinary[i] == true)  allBlack = false;   // at least one sees white
+    if (lineOnSensor[i] == false) allWhite = false;  // at least one sees black
+    if (lineOnSensor[i] == true)  allBlack = false;   // at least one sees white
   }
 
   if (allWhite) {
@@ -160,7 +160,7 @@ void readSensors() {
     normalized = constrain(normalized, 0, 1000);
 
     sensorAnalog[i] = normalized;
-    sensorBinary[i] = (normalized > sensorThreshold[i]);
+    lineOnSensor[i] = (normalized > sensorThreshold[i]);
   }
 }
 
@@ -188,7 +188,7 @@ int calculatePosition() {
 
   // No line detected via analog → fallback to binary
   for (int i = 0; i < NUM_SENSORS; i++) {
-    if (sensorBinary[i] == false) {
+    if (lineOnSensor[i] == false) {
       return (i < NUM_SENSORS / 2) ? 0 : 5000;
     }
   }
@@ -386,7 +386,7 @@ void printDebug(int position, int error) {
   Serial.print(position);
   Serial.print(F(" S:"));
   for (int i = 0; i < NUM_SENSORS; i++) {
-    Serial.print(sensorBinary[i] ? 'W' : 'B');
+    Serial.print(lineOnSensor[i] ? 'W' : 'B');
   }
   Serial.print(F(" ERR:"));
   Serial.print(error);
