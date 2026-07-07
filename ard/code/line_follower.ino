@@ -1,266 +1,212 @@
-// Line follower 6 sensor TCRT5000 dengan Arduino Uno dan L298N
+/**
+ * Robot Line Follower — 6 TCRT5000 Sensors + PID Control
+ *
+ * Hardware: Arduino Uno R3, 6× TCRT5000, L298N Motor Driver, 2× DC Motor
+ * Language: English (code) / Bahasa Indonesia (comments)
+ *
+ * Features:
+ *   - Automatic sensor calibration on startup
+ *   - PID-based path tracking (configurable constants)
+ *   - Progressive line search when line is lost
+ *   - Intersection detection (all sensors black)
+ *   - Non-blocking timer-based loop
+ *   - Serial debug output
+ */
+
+// ============================================================================
+// CONSTANTS & CONFIGURATION
+// ============================================================================
+
 #define NUM_SENSORS 6
 
-// Konfigurasi pin
-int sensorPin[NUM_SENSORS] = {A0, A1, A2, A3, A4, A5};
-int ENA = 5;  // Enable motor A (kiri)
-int IN1 = 8;  // Motor A input 1
-int IN2 = 9;  // Motor A input 2
-int IN3 = 10; // Motor B input 1
-int IN4 = 11; // Motor B input 2
-int ENB = 6;  // Enable motor B (kanan)
+// --- Pin Assignments ---
+const int SENSOR_PINS[NUM_SENSORS] = {A0, A1, A2, A3, A4, A5};
+const int PIN_ENA = 5;   // L298N Enable A (left motor)
+const int PIN_IN1 = 8;   // L298N Input 1
+const int PIN_IN2 = 9;   // L298N Input 2
+const int PIN_IN3 = 10;  // L298N Input 3
+const int PIN_IN4 = 11;  // L298N Input 4
+const int PIN_ENB = 6;   // L298N Enable B (right motor)
 
-// Parameter kecepatan
-int baseSpeed = 150;     // Kecepatan dasar
-int maxSpeed = 200;      // Kecepatan maksimum
-int turnSpeed = 120;     // Kecepatan belok
+// --- Speed Parameters ---
+const int SPEED_BASE = 150;   // Base speed for normal tracking
+const int SPEED_MAX = 200;    // Maximum speed limit
+const int SPEED_TURN = 120;   // Speed during line search
+const int SPEED_SLOW = 80;    // Slow speed for precise turns
 
-// Kalibrasi sensor
+// --- PID Constants (tune these for your track) ---
+const float KP = 25.0;   // Proportional gain
+const float KI = 0.0;    // Integral gain
+const float KD = 15.0;   // Derivative gain
+
+// --- PID Limits ---
+const float INTEGRAL_MAX = 10000.0;   // Anti-windup clamp
+const int POSITION_CENTER = 2500;     // Center position (0-5000 range)
+
+// --- Line Detection Thresholds ---
+const int LINE_DETECT_THRESHOLD = 200;  // Normalized value above this = line detected
+const int CALIBRATION_MIN_RANGE = 100;  // Min sensor range for valid calibration
+
+// --- Search Strategy ---
+const int SEARCH_PHASE_1_CYCLES = 10;
+const int SEARCH_PHASE_2_CYCLES = 10;
+const int LOOP_DELAY_MS = 10;
+
+// ============================================================================
+// GLOBAL STATE
+// ============================================================================
+
+// --- Calibration Data ---
 int sensorMin[NUM_SENSORS] = {1023, 1023, 1023, 1023, 1023, 1023};
 int sensorMax[NUM_SENSORS] = {0, 0, 0, 0, 0, 0};
 int sensorThreshold[NUM_SENSORS] = {500, 500, 500, 500, 500, 500};
-int sensor[NUM_SENSORS];          // Nilai biner (0 = garis hitam, 1 = latar putih)
-int sensorAnalog[NUM_SENSORS];    // Nilai analog ternormalisasi 0-1000 (dari kalibrasi)
 
-// Parameter PID
-float Kp = 25;           // Konstanta proporsional
-float Ki = 0;            // Konstanta integral
-float Kd = 15;           // Konstanta derivatif
-float lastError = 0;     // Error sebelumnya
-float integral = 0;      // Nilai integral
+// --- Sensor Readings ---
+int sensorAnalog[NUM_SENSORS];   // Normalized analog values (0-1000)
+bool sensorBinary[NUM_SENSORS];  // Binary: false = black line, true = white surface
 
-// Status line
+// --- PID State ---
+float pidError = 0.0;
+float pidIntegral = 0.0;
+float pidLastError = 0.0;
+
+// --- Search State ---
 int lineLostCounter = 0;
 bool wasSearching = false;
 
+// ============================================================================
+// SETUP
+// ============================================================================
+
 void setup() {
-  // Inisialisasi pin sensor
+  // Initialize sensor pins
   for (int i = 0; i < NUM_SENSORS; i++) {
-    pinMode(sensorPin[i], INPUT);
+    pinMode(SENSOR_PINS[i], INPUT);
   }
 
-  // Inisialisasi pin motor
-  pinMode(ENA, OUTPUT);
-  pinMode(IN1, OUTPUT);
-  pinMode(IN2, OUTPUT);
-  pinMode(IN3, OUTPUT);
-  pinMode(IN4, OUTPUT);
-  pinMode(ENB, OUTPUT);
+  // Initialize motor pins
+  pinMode(PIN_ENA, OUTPUT);
+  pinMode(PIN_IN1, OUTPUT);
+  pinMode(PIN_IN2, OUTPUT);
+  pinMode(PIN_IN3, OUTPUT);
+  pinMode(PIN_IN4, OUTPUT);
+  pinMode(PIN_ENB, OUTPUT);
 
   Serial.begin(9600);
-  Serial.println("Line Follower Robot Starting...");
+  Serial.println(F("=== Robot Line Follower ==="));
+  Serial.println(F("6x TCRT5000 + PID Control"));
+  Serial.println(F(""));
 
-  // Kalibrasi sensor
   calibrateSensors();
 }
 
-void loop() {
-  bacaSensor();
+// ============================================================================
+// MAIN LOOP — State Machine
+// ============================================================================
 
-  bool allWhite = (sensor[0] == 1 && sensor[1] == 1 && sensor[2] == 1 &&
-                   sensor[3] == 1 && sensor[4] == 1 && sensor[5] == 1);
-  bool allBlack = (sensor[0] == 0 && sensor[1] == 0 && sensor[2] == 0 &&
-                   sensor[3] == 0 && sensor[4] == 0 && sensor[5] == 0);
+void loop() {
+  readSensors();
+
+  bool allWhite = true;
+  bool allBlack = true;
+  for (int i = 0; i < NUM_SENSORS; i++) {
+    if (sensorBinary[i] == false) allWhite = false;  // at least one sees black
+    if (sensorBinary[i] == true)  allBlack = false;   // at least one sees white
+  }
 
   if (allWhite) {
-    // Mode darurat — robot kehilangan garis
+    // EMERGENCY — line completely lost
     lineLostCounter++;
     searchLine();
     wasSearching = true;
   }
   else if (allBlack) {
-    // Persimpangan terdeteksi — lanjutkan lurus
+    // INTERSECTION — all sensors over black line → go straight
     lineLostCounter = 0;
-
-    // Reset PID state saat kembali ke garis
-    if (wasSearching) {
-      integral = 0;
-      lastError = 0;
-      wasSearching = false;
-    }
-
-    maju(baseSpeed);
+    resetPidOnReacquire(0);
+    motorForward(SPEED_BASE);
   }
   else {
-    // Mode normal — ikuti garis dengan PID
+    // NORMAL — follow line with PID
     lineLostCounter = 0;
 
-    // Kalkulasi posisi garis (0-5000), 2500 = tengah
     int position = calculatePosition();
-    int error = position - 2500;
+    int error = position - POSITION_CENTER;
 
-    // Reset PID state saat kembali dari mode search
     if (wasSearching) {
-      integral = 0;
-      lastError = error;
-      wasSearching = false;
+      resetPidOnReacquire(error);
     }
 
-    // Kalkulasi PID
-    float derivative = error - lastError;
-    integral += error;
-    lastError = error;
+    float correction = computePid(error);
+    applyMotorCorrection(correction);
 
-    // Anti-windup integral
-    if (integral > 10000) integral = 10000;
-    if (integral < -10000) integral = -10000;
-
-    // Koreksi kecepatan
-    float motorSpeed = Kp * error + Ki * integral + Kd * derivative;
-
-    int leftMotorSpeed = baseSpeed - motorSpeed;
-    int rightMotorSpeed = baseSpeed + motorSpeed;
-
-    // Batas kecepatan
-    if (leftMotorSpeed > maxSpeed) leftMotorSpeed = maxSpeed;
-    if (rightMotorSpeed > maxSpeed) rightMotorSpeed = maxSpeed;
-    if (leftMotorSpeed < 0) leftMotorSpeed = 0;
-    if (rightMotorSpeed < 0) rightMotorSpeed = 0;
-
-    controlMotors(leftMotorSpeed, rightMotorSpeed);
-    printDebugInfo(leftMotorSpeed, rightMotorSpeed, error, position);
+    printDebug(position, error);
   }
 
-  delay(10);
+  delay(LOOP_DELAY_MS);
 }
 
-void bacaSensor() {
-  for (int i = 0; i < NUM_SENSORS; i++) {
-    int nilai = analogRead(sensorPin[i]);
+// ============================================================================
+// SENSORS
+// ============================================================================
 
-    // Normalisasi 0-1000 berdasarkan kalibrasi
-    int normalized = map(nilai, sensorMin[i], sensorMax[i], 0, 1000);
+/** Read all sensors, update binary + analog arrays */
+void readSensors() {
+  for (int i = 0; i < NUM_SENSORS; i++) {
+    int raw = analogRead(SENSOR_PINS[i]);
+
+    // Map raw 0-1023 to normalized 0-1000 using calibration bounds
+    int normalized = map(raw, sensorMin[i], sensorMax[i], 0, 1000);
     normalized = constrain(normalized, 0, 1000);
 
-    sensorAnalog[i] = normalized;                       // simpan nilai analog ternormalisasi (untuk calculatePosition)
-    sensor[i] = (normalized > sensorThreshold[i]) ? 1 : 0;  // simpan nilai biner (untuk logika)
+    sensorAnalog[i] = normalized;
+    sensorBinary[i] = (normalized > sensorThreshold[i]);
   }
 }
 
-// Posisi garis: 0 (paling kiri) — 5000 (paling kanan), 2500 = tengah
+/** Calculate line position using weighted average (0 = far left, 5000 = far right, 2500 = center) */
 int calculatePosition() {
-  boolean onLine = false;
+  bool lineDetected = false;
   long sum = 0;
   long weightedSum = 0;
 
   for (int i = 0; i < NUM_SENSORS; i++) {
-    // Balik: nilai analog rendah = garis hitam → jadi tinggi
+    // Invert: low analog value = black line → becomes high
     int value = 1000 - sensorAnalog[i];
 
-    if (value > 200) {
-      onLine = true;
+    if (value > LINE_DETECT_THRESHOLD) {
+      lineDetected = true;
     }
 
     sum += value;
     weightedSum += (long)value * (i * 1000);
   }
 
-  if (onLine && sum > 0) {
-    return weightedSum / sum;
+  if (lineDetected && sum > 0) {
+    return (int)(weightedSum / sum);
   }
 
-  // Fallback: sensor terluar mana yang masih lihat hitam?
+  // No line detected via analog → fallback to binary
   for (int i = 0; i < NUM_SENSORS; i++) {
-    if (sensor[i] == 0) {
+    if (sensorBinary[i] == false) {
       return (i < NUM_SENSORS / 2) ? 0 : 5000;
     }
   }
 
-  return 2500; // tengah
+  return POSITION_CENTER;  // true center fallback
 }
 
-void controlMotors(int leftSpeed, int rightSpeed) {
-  digitalWrite(IN1, HIGH);
-  digitalWrite(IN2, LOW);
-  digitalWrite(IN3, HIGH);
-  digitalWrite(IN4, LOW);
+// ============================================================================
+// CALIBRATION
+// ============================================================================
 
-  analogWrite(ENA, leftSpeed);
-  analogWrite(ENB, rightSpeed);
-}
-
-void maju(int speed) {
-  digitalWrite(IN1, HIGH);
-  digitalWrite(IN2, LOW);
-  analogWrite(ENA, speed);
-
-  digitalWrite(IN3, HIGH);
-  digitalWrite(IN4, LOW);
-  analogWrite(ENB, speed);
-}
-
-void belokKiri(int speed) {
-  digitalWrite(IN1, LOW);
-  digitalWrite(IN2, HIGH);
-  analogWrite(ENA, speed);
-
-  digitalWrite(IN3, HIGH);
-  digitalWrite(IN4, LOW);
-  analogWrite(ENB, speed);
-}
-
-void belokKanan(int speed) {
-  digitalWrite(IN1, HIGH);
-  digitalWrite(IN2, LOW);
-  analogWrite(ENA, speed);
-
-  digitalWrite(IN3, LOW);
-  digitalWrite(IN4, HIGH);
-  analogWrite(ENB, speed);
-}
-
-void stopMotor() {
-  digitalWrite(IN1, LOW);
-  digitalWrite(IN2, LOW);
-  digitalWrite(IN3, LOW);
-  digitalWrite(IN4, LOW);
-  analogWrite(ENA, 0);
-  analogWrite(ENB, 0);
-}
-
-void searchLine() {
-  // Fase 1 (0-9): putar ke arah terakhir garis diketahui
-  if (lineLostCounter < 10) {
-    if (lastError < 0) {
-      belokKiri(turnSpeed);
-    } else {
-      belokKanan(turnSpeed);
-    }
-  }
-  // Fase 2 (10-19): putar kebalikan
-  else if (lineLostCounter < 20) {
-    if (lastError < 0) {
-      belokKanan(turnSpeed);
-    } else {
-      belokKiri(turnSpeed);
-    }
-  }
-  // Fase 3 (20+): spin di tempat, bergantian arah
-  else {
-    if (lineLostCounter % 2 == 0) {
-      digitalWrite(IN1, LOW);
-      digitalWrite(IN2, HIGH);
-      analogWrite(ENA, turnSpeed);
-      digitalWrite(IN3, LOW);
-      digitalWrite(IN4, HIGH);
-      analogWrite(ENB, turnSpeed);
-    } else {
-      digitalWrite(IN1, HIGH);
-      digitalWrite(IN2, LOW);
-      analogWrite(ENA, turnSpeed);
-      digitalWrite(IN3, HIGH);
-      digitalWrite(IN4, LOW);
-      analogWrite(ENB, turnSpeed);
-    }
-  }
-}
-
+/** Auto-calibrate sensors by sampling min/max over ~5 seconds */
 void calibrateSensors() {
-  Serial.println("Kalibrasi sensor dimulai — gerakkan robot di atas garis hitam dan latar putih...");
+  Serial.println(F("Kalibrasi: gerakkan robot di atas garis hitam dan latar putih..."));
 
   for (int i = 0; i < 500; i++) {
     for (int j = 0; j < NUM_SENSORS; j++) {
-      int value = analogRead(sensorPin[j]);
+      int value = analogRead(SENSOR_PINS[j]);
 
       if (value < sensorMin[j]) sensorMin[j] = value;
       if (value > sensorMax[j]) sensorMax[j] = value;
@@ -268,40 +214,195 @@ void calibrateSensors() {
     delay(10);
   }
 
+  Serial.println(F("Hasil Kalibrasi:"));
   for (int i = 0; i < NUM_SENSORS; i++) {
-    if (sensorMax[i] > sensorMin[i] + 100) {
+    if (sensorMax[i] > sensorMin[i] + CALIBRATION_MIN_RANGE) {
       sensorThreshold[i] = (sensorMax[i] + sensorMin[i]) / 2;
     } else {
-      sensorThreshold[i] = 500;
+      sensorThreshold[i] = 500;  // fallback
     }
 
-    Serial.print("Sensor ");
+    Serial.print(F("  Sensor "));
     Serial.print(i);
-    Serial.print(": Min=");
+    Serial.print(F(": Min="));
     Serial.print(sensorMin[i]);
-    Serial.print(", Max=");
+    Serial.print(F(", Max="));
     Serial.print(sensorMax[i]);
-    Serial.print(", Threshold=");
+    Serial.print(F(", Threshold="));
     Serial.println(sensorThreshold[i]);
   }
 
-  Serial.println("Kalibrasi selesai!");
+  Serial.println(F("Kalibrasi selesai!"));
   delay(1000);
 }
 
-void printDebugInfo(int leftSpeed, int rightSpeed, int error, int position) {
-  Serial.print("Pos:");
-  Serial.print(position);
-  Serial.print(" S:");
-  for (int i = 0; i < NUM_SENSORS; i++) {
-    Serial.print(sensor[i]);
+// ============================================================================
+// PID CONTROLLER
+// ============================================================================
+
+/** Compute PID output given position error (target - actual) */
+float computePid(int error) {
+  float derivative = error - pidLastError;
+  pidIntegral += error;
+
+  // Anti-windup: clamp integral term
+  if (pidIntegral > INTEGRAL_MAX) pidIntegral = INTEGRAL_MAX;
+  if (pidIntegral < -INTEGRAL_MAX) pidIntegral = -INTEGRAL_MAX;
+
+  float output = KP * error + KI * pidIntegral + KD * derivative;
+
+  pidLastError = error;
+
+  return output;
+}
+
+/** Reset PID state when reacquiring the line after search */
+void resetPidOnReacquire(int error) {
+  pidIntegral = 0;
+  pidLastError = error;
+  wasSearching = false;
+}
+
+// ============================================================================
+// MOTOR CONTROL
+// ============================================================================
+
+/** Apply signed correction to left/right motor speeds */
+void applyMotorCorrection(float correction) {
+  int leftSpeed = SPEED_BASE - (int)correction;
+  int rightSpeed = SPEED_BASE + (int)correction;
+
+  // Clamp to [0, SPEED_MAX]
+  if (leftSpeed > SPEED_MAX)  leftSpeed = SPEED_MAX;
+  if (rightSpeed > SPEED_MAX) rightSpeed = SPEED_MAX;
+  if (leftSpeed < 0)  leftSpeed = 0;
+  if (rightSpeed < 0) rightSpeed = 0;
+
+  motorSet(leftSpeed, rightSpeed);
+}
+
+/** Set both motors to given speeds (both forward) */
+void motorSet(int leftSpeed, int rightSpeed) {
+  digitalWrite(PIN_IN1, HIGH);
+  digitalWrite(PIN_IN2, LOW);
+  digitalWrite(PIN_IN3, HIGH);
+  digitalWrite(PIN_IN4, LOW);
+
+  analogWrite(PIN_ENA, leftSpeed);
+  analogWrite(PIN_ENB, rightSpeed);
+}
+
+/** Drive straight forward */
+void motorForward(int speed) {
+  motorSet(speed, speed);
+}
+
+/** Pivot left (left backward, right forward) */
+void motorSpinLeft(int speed) {
+  digitalWrite(PIN_IN1, LOW);
+  digitalWrite(PIN_IN2, HIGH);
+  digitalWrite(PIN_IN3, HIGH);
+  digitalWrite(PIN_IN4, LOW);
+
+  analogWrite(PIN_ENA, speed);
+  analogWrite(PIN_ENB, speed);
+}
+
+/** Pivot right (left forward, right backward) */
+void motorSpinRight(int speed) {
+  digitalWrite(PIN_IN1, HIGH);
+  digitalWrite(PIN_IN2, LOW);
+  digitalWrite(PIN_IN3, LOW);
+  digitalWrite(PIN_IN4, HIGH);
+
+  analogWrite(PIN_ENA, speed);
+  analogWrite(PIN_ENB, speed);
+}
+
+/** Turn left on the spot (both motors forward but different speeds) */
+void motorTurnLeft(int speed) {
+  digitalWrite(PIN_IN1, LOW);
+  digitalWrite(PIN_IN2, HIGH);
+  digitalWrite(PIN_IN3, HIGH);
+  digitalWrite(PIN_IN4, LOW);
+
+  analogWrite(PIN_ENA, speed);
+  analogWrite(PIN_ENB, speed);
+}
+
+/** Turn right on the spot */
+void motorTurnRight(int speed) {
+  digitalWrite(PIN_IN1, HIGH);
+  digitalWrite(PIN_IN2, LOW);
+  digitalWrite(PIN_IN3, LOW);
+  digitalWrite(PIN_IN4, HIGH);
+
+  analogWrite(PIN_ENA, speed);
+  analogWrite(PIN_ENB, speed);
+}
+
+/** Stop both motors */
+void motorStop() {
+  digitalWrite(PIN_IN1, LOW);
+  digitalWrite(PIN_IN2, LOW);
+  digitalWrite(PIN_IN3, LOW);
+  digitalWrite(PIN_IN4, LOW);
+
+  analogWrite(PIN_ENA, 0);
+  analogWrite(PIN_ENB, 0);
+}
+
+// ============================================================================
+// LINE SEARCH STRATEGY
+// ============================================================================
+
+/**
+ * Progressive line search strategy:
+ *   Phase 1: Turn toward last known line direction
+ *   Phase 2: Reverse direction
+ *   Phase 3: Pivot in place, alternating direction each cycle
+ */
+void searchLine() {
+  if (lineLostCounter < SEARCH_PHASE_1_CYCLES) {
+    // Phase 1 — head toward last known side
+    if (pidLastError < 0) {
+      motorTurnLeft(SPEED_TURN);
+    } else {
+      motorTurnRight(SPEED_TURN);
+    }
   }
-  Serial.print(" L:");
-  Serial.print(leftSpeed);
-  Serial.print(" R:");
-  Serial.print(rightSpeed);
-  Serial.print(" Err:");
+  else if (lineLostCounter < SEARCH_PHASE_1_CYCLES + SEARCH_PHASE_2_CYCLES) {
+    // Phase 2 — try the opposite direction
+    if (pidLastError < 0) {
+      motorTurnRight(SPEED_TURN);
+    } else {
+      motorTurnLeft(SPEED_TURN);
+    }
+  }
+  else {
+    // Phase 3 — pivot in place, alternating every cycle
+    if (lineLostCounter % 2 == 0) {
+      motorSpinLeft(SPEED_TURN);
+    } else {
+      motorSpinRight(SPEED_TURN);
+    }
+  }
+}
+
+// ============================================================================
+// DEBUG
+// ============================================================================
+
+void printDebug(int position, int error) {
+  Serial.print(F("POS:"));
+  Serial.print(position);
+  Serial.print(F(" S:"));
+  for (int i = 0; i < NUM_SENSORS; i++) {
+    Serial.print(sensorBinary[i] ? 'W' : 'B');
+  }
+  Serial.print(F(" ERR:"));
   Serial.print(error);
-  Serial.print(" Lost:");
-  Serial.println(lineLostCounter);
+  Serial.print(F(" LOST:"));
+  Serial.print(lineLostCounter);
+  Serial.println();
 }

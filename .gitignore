@@ -1,0 +1,18 @@
+# Arduino IDE
+*.ino.bkp
+*.ino.orig
+*.o
+*.elf
+*.hex
+build/
+__pycache__/
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Editor
+.idea/
+.vscode/
