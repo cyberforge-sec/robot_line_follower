@@ -63,7 +63,7 @@ int sensorThreshold[NUM_SENSORS] = {500, 500, 500, 500, 500, 500};
 
 // --- Sensor Readings ---
 int sensorAnalog[NUM_SENSORS];   // Normalized analog values (0-1000)
-bool sensorBinary[NUM_SENSORS];  // Binary: false = black line, true = white surface
+bool sensorBinary[NUM_SENSORS];  // true = white (line absent), false = black (line detected)
 
 // --- PID State ---
 float pidError = 0.0;
@@ -319,26 +319,14 @@ void motorSpinRight(int speed) {
   analogWrite(PIN_ENB, speed);
 }
 
-/** Turn left on the spot (both motors forward but different speeds) */
+/** Skid-steer turn left (left slower, right faster, both forward) */
 void motorTurnLeft(int speed) {
-  digitalWrite(PIN_IN1, LOW);
-  digitalWrite(PIN_IN2, HIGH);
-  digitalWrite(PIN_IN3, HIGH);
-  digitalWrite(PIN_IN4, LOW);
-
-  analogWrite(PIN_ENA, speed);
-  analogWrite(PIN_ENB, speed);
+  motorSet(speed / 2, speed);
 }
 
-/** Turn right on the spot */
+/** Skid-steer turn right (left faster, right slower, both forward) */
 void motorTurnRight(int speed) {
-  digitalWrite(PIN_IN1, HIGH);
-  digitalWrite(PIN_IN2, LOW);
-  digitalWrite(PIN_IN3, LOW);
-  digitalWrite(PIN_IN4, HIGH);
-
-  analogWrite(PIN_ENA, speed);
-  analogWrite(PIN_ENB, speed);
+  motorSet(speed, speed / 2);
 }
 
 /** Stop both motors */
