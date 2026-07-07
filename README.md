@@ -1,4 +1,5 @@
 # robot_line_follower
+
 Arduino-based line follower using 6 TCRT5000 sensors and PID control for autonomous path tracking
 
 🤖 Robot Line Follower (Arduino + IR Sensor)
@@ -7,32 +8,10 @@ Proyek ini adalah robot line follower berbasis Arduino Uno dan sensor TCRT5000, 
 
 🖼️ Gambar Lintasan
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-![alt text](https://github.com/cyberforge-sec/robot_line_follower/blob/main/robot%20line%20follower/Gambar%20Lintasan.png?raw=true)
+![alt text](https://github.com/cyberforge-sec/robot_line_follower/blob/main/ard/Gambar_Lintasan.png?raw=true)
 
 🔧 Spesifikasi Hardware & Software
-Lihat detail lengkap pada file [Lihat spesifikasi hardware & software](https://github.com/cyberforge-sec/robot_line_follower/blob/main/robot%20line%20follower/spesifikasi.txt)
+Lihat detail lengkap pada file [spesifikasi.txt](ard/code/spesifikasi.txt)
 
 🧠 Fitur Utama
 - 6 sensor IR
@@ -52,7 +31,7 @@ Lihat detail lengkap pada file [Lihat spesifikasi hardware & software](https://g
 
 🚀 Cara Instalasi
 1. Download dan install [Arduino IDE](https://www.arduino.cc/en/software)
-2. Buka file `line_follower.ino`
+2. Buka file `ard/code/line_follower.ino`
 3. Sambungkan Arduino Uno ke komputer
 4. Upload sketch ke board
 5. Pastikan sensor IR terhubung ke pin A0-A5 dan motor ke L298N
@@ -68,7 +47,5 @@ Kd = 15;
 
 🧪 Tips Pemakaian
 - Gunakan latar putih dengan garis hitam tebal 18–25 mm.
-
 - Hindari cahaya langsung ke sensor.
-
 - Gunakan baterai penuh untuk hasil maksimal.
